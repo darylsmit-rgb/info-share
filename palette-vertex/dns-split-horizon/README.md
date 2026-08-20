@@ -136,17 +136,3 @@ touch tenant CoreDNS.
   cluster that needs to reach the mgmt-plane will resolve it correctly,
   not just CMA.
 
-## What to send back before the meeting
-
-A short reply to the questions above (or "unsure — let's decide together"
-for any of them) plus an **architecture drawing** (whiteboard photo is
-fine) showing:
-
-- Mgmt-plane VPC, its load balancer(s), and the rootDomain.
-- Two representative tenant VPCs (same-account + cross-account if that's
-  your topology).
-- Any peering / Transit Gateway / PrivateLink / VPN between them.
-- Where the CASB sits and what egress path it applies to.
-
-That's enough for us to arrive with a proposed pattern and validate it in
-real time, instead of leaving the meeting with a DNS action item.
