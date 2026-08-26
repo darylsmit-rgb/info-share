@@ -1,0 +1,46 @@
+# =============================================================================
+# CURRENT (BEFORE) — values that produce the Classic ELB we have deployed today.
+#
+# The `spectro-mgmt-plane` chart renders the Traefik LoadBalancer service from
+#   vertex/spectro-mgmt-plane/charts/ingress/templates/services-traefik.yaml
+#
+# With this values shape:
+#   - `ingress.annotations` is empty → the {{ if gt (len .Values.ingress.annotations) 0 }}
+#     block skips → the Service has NO aws-load-balancer-type annotation.
+#   - AWS's in-tree cloud-controller defaults an unannotated LoadBalancer Service to
+#     a Classic ELB.
+#   - `ingressStaticIP` renders spec.loadBalancerIP if set, but AWS Classic ELB
+#     does NOT support pre-specifying the LB IP — so it's a no-op on AWS today.
+#   - `terminateHTTPSAtLoadBalancer: false` means the Service targets `websecure`
+#     (traefik's TLS listener) so Traefik terminates HTTPS; the LB just passes
+#     TCP/443 through.
+#
+# What's rendered (verified live on the mgmt cluster):
+#   Service ingress-traefik/traefik-ingress-controller
+#     type: LoadBalancer
+#     externalTrafficPolicy: Local
+#     annotations:
+#       # (none — only helm.sh/release metadata)
+#     ports:
+#       - 80  → web        (Traefik plain-HTTP entrypoint)
+#       - 443 → websecure  (Traefik TLS-terminating entrypoint)
+#     spec.loadBalancerIP: <unset>
+#
+# Result:
+#   hostname: <32hex>-<n>.<region>.elb.amazonaws.com   (Classic ELB signature)
+#   IP:       rotates under AWS maintenance windows
+#             → every rotation invalidates /etc/hosts pins, tenant-cluster CoreDNS
+#               phone-home entries, cluster-profile mgmt_elb_ip vars, etc.
+# =============================================================================
+
+ingress:
+  # ─── Empty map → NO annotations on the Service → Classic ELB by default. ────
+  annotations: {}
+
+  # ─── Ignored on AWS Classic (only respected by GCP/Azure and NLB-with-EIPs). ─
+  ingressStaticIP: ""
+
+  # ─── HTTPS terminates at Traefik, not at the LB. ────────────────────────────
+  # LB port 443/TCP → traefik targetPort `websecure` → Traefik does the TLS
+  # handshake, presents Palette's cert, and forwards to the api service.
+  terminateHTTPSAtLoadBalancer: false
