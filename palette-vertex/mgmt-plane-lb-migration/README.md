@@ -24,6 +24,68 @@ This directory contains the values overlays for the migration + a runbook.
 | `values-nlb-public-eips.yaml` | Target: **PUBLIC NLB with pre-allocated Elastic IPs**. Solves the IP-rotation problem while keeping the mgmt-plane reachable from the public Internet. Sandbox-shaped. |
 | `values-nlb-internal.yaml` | Target: **INTERNAL NLB with pre-allocated private IPs**. Prep for PrivateLink / VPC-peering topologies. Enterprise-shaped (CASB-in-path customers). |
 
+## Where does this `ingress:` block go?
+
+**Two things people miss.**
+
+**1) The correct path is `ingress.ingress.annotations` — double-nested.**
+`spectro-mgmt-plane` is an umbrella chart whose ingress subchart is named
+`ingress`. Helm nests subchart values under the subchart's name in the
+parent's values, so the fully-qualified path from the parent's perspective is
+`ingress.ingress.annotations`. Files that flat-nest under a single `ingress:`
+silently no-op on `helm upgrade` because the subchart's Service template
+reads `.Values.ingress.annotations` in subchart-relative terms.
+
+**2) You merge this into the SAME values file you already use for the
+install, not as a separate file.** Your existing environment values file
+(e.g. `values-<env>.yaml`, `palette-mgmt-install/values-<env>.yaml`, or
+whatever you pass to `helm upgrade -f`) almost certainly already has an
+`ingress:` block that looks like:
+
+```yaml
+ingress:
+  enabled: true
+  traefik:
+    hostPort: false
+```
+
+You extend that block by adding a sibling `ingress:` subkey with the
+annotations from the target values file:
+
+```yaml
+ingress:
+  enabled: true
+  traefik:
+    hostPort: false
+  ingress:                           # ← ADD THIS SUBKEY
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+      # ... (from values-nlb-*.yaml)
+```
+
+You CAN also pass the target file as an extra `-f`:
+
+```bash
+helm upgrade hubble <chart> -n default \
+  -f values-<env>.yaml \
+  -f values-nlb-public-eips.yaml       # or values-nlb-internal.yaml
+```
+
+Helm does a deep merge of maps, so the later `-f` file's `ingress.ingress.*`
+keys merge into the first file's `ingress.*` block. This works but is
+easier to reason about if you inline the change.
+
+**Verify before you apply:**
+
+```bash
+# Show what the chart would render for the traefik Service annotations —
+# should include your new NLB annotations, and no others surprise you.
+helm --kube-context <MGMT> template hubble <chart> -n default \
+  -f values-<env>.yaml \
+  -f values-nlb-public-eips.yaml \
+  | yq eval 'select(.kind == "Service" and .metadata.name == "traefik-ingress-controller")' -
+```
+
 ## Which target to pick
 
 | If your situation is... | Pick |
